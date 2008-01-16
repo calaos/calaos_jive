@@ -43,6 +43,7 @@ local Textarea               = require("jive.ui.Textarea")
 local Textinput              = require("jive.ui.Textinput")
 local Window                 = require("jive.ui.Window")
 local Timer                  = require("jive.ui.Timer")
+local SocketUdp              = require("jive.net.SocketUdp")
 
 local log                    = require("jive.utils.log").addCategory("test", jive.utils.log.DEBUG)
 
@@ -57,12 +58,23 @@ local srf = nil
 local window = nil
 local width, height = Framework:getScreenSize()
 
+-- The main NetworkThread
+local jnt = jnt
+
+local CALAOS_UDP_PORT = 4545
+
+local calaosd_ip = nil
+
 module(...)
 oo.class(_M, Applet)
 
 
 
 function startApplet(self)
+
+        -- Discover the calaosd server
+        Discover()
+
         self.window = self:newWindow("Calaos Home")
         self:tieAndShowWindow(self.window)
         return self.window
@@ -72,33 +84,38 @@ function displayName(self)
         return "Calaos Home"
 end
 
-Logo = oo.class()
+Sprite = oo.class()
 
-local LogoSprite = nil
-
-function Logo:__init(sw, sh)
+function Sprite:__init(sw, sh, ifile)
+        local imgSprite = nil
         local obj = oo.rawnew(self)
-        if LogoSprite == nil then
-                LogoSprite = Surface:loadImage("applets/Calaos/logo.png")
+        if imgSprite == nil then
+                imgSprite = Surface:loadImage(ifile)
         end
 
-        obj.sprite = Icon("logo", LogoSprite)
+        obj.sprite = Icon("logo", imgSprite)
 
-        local spritew, spriteh = LogoSprite:getSize()
+        local spritew, spriteh = imgSprite:getSize()
         obj.width = spritew
         obj.height = spriteh
 
         obj.screen_width = sw
         obj.screen_height = sh
 
-        obj.x = 0
+        obj.x = obj.screen_width / 2 - obj.width / 2
         obj.y = obj.screen_height / 2 - obj.height / 2
 
         return obj
 end
 
-local function Logo_draw(self)
+local function Sprite_draw(self)
         local sprite = self.sprite
+        sprite:setPosition(self.x, self.y)
+end
+local function Sprite_draw_pos(self, x, y)
+        local sprite = self.sprite
+        self.x = x
+        self.y = y
         sprite:setPosition(self.x, self.y)
 end
 
@@ -110,11 +127,11 @@ function newWindow(self, ...)
         self.bg = Icon("background", srf)
 
         local start_snd = Audio:loadSound("applets/Calaos/calaos_start.wav", 0)
-        start_snd:play()
+--         start_snd:play()
 
         window:addWidget(self.bg)
 
-        local logo = Logo(width, height)
+        local logo = Sprite(width, height, "applets/Calaos/graphics/logo.png")
         window:addWidget(logo.sprite)
 
         -- Back key
@@ -133,7 +150,7 @@ function newWindow(self, ...)
 
         self.bg:addAnimation(
                 function()
-                        Logo_draw(logo)
+                        Sprite_draw(logo)
                 end,
                 FRAME_RATE
         )
@@ -148,12 +165,13 @@ function newWindow(self, ...)
 end
 
 function calaosMainmenu(self)
+
         local window = Window("window", self:displayName())
 
-        local menu = SimpleMenu("test_style", {
+        local menu = SimpleMenu("big_menu", {
                 {
                         text = "My Home",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/home_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/home_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
 
@@ -161,7 +179,7 @@ function calaosMainmenu(self)
                 },
                 {
                         text = "Multimedia",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/media_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/media_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
 
@@ -169,7 +187,7 @@ function calaosMainmenu(self)
                 },
                 {
                         text = "Configuration",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/config_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/config_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
 
@@ -177,45 +195,126 @@ function calaosMainmenu(self)
                 },
                 {
                         text = "A propos",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/about_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/about_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
+                                local window = Window("window", self:displayName())
+                                local about_msg = Textarea("help", "Applet Calaos Home for Jive remotes.\n\nwww.calaos.fr\nCopyright 2008 Calaos")
+                                local logo = Sprite(width, height, "applets/Calaos/logo.png")
+                                window:addWidget(logo.sprite)
+                                window:addWidget(about_msg)
 
+                                window:addListener(EVENT_KEY_PRESS, 
+                                        function(evt)
+                                                if evt:getKeycode() == KEY_BACK then
+                                                        window:hide()
+                                                        return EVENT_CONSUME
+                                                elseif evt:getKeycode() == KEY_GO then
+                                                        window:bumpRight()
+                                                        return EVENT_CONSUME
+                                                end
+                                        end
+                                )
+
+                                self:tieAndShowWindow(window)
                         end
                 }
         })
 
-        window:addWidget(menu)
+        if calaosd_ip == nil then
+                local error_msg = Textarea("help", "Aucun serveur domotique Calaos trouvé sur le réseau...\n\nVeuillez vérifier les paramètres Wifi et/ou réseau de votre installation.")
+
+                local ierror = Sprite(width, height, "applets/Calaos/graphics/no-server.png")
+                window:addWidget(ierror.sprite)
+                window:addWidget(error_msg)
+
+                local s = Surface:newRGBA(width, height)
+                s:filledRectangle(0, 0, width, height, 0x00000000)
+                local bg = Icon("background", s)
+                window:addWidget(bg)
+
+                bg:addAnimation(
+                        function()
+                                Sprite_draw_pos(ierror, width / 2 - ierror.width / 2, 50)
+                        end,
+                        FRAME_RATE
+                )
+
+                window:addListener(EVENT_KEY_PRESS, 
+                        function(evt)
+                                if evt:getKeycode() == KEY_BACK then
+                                        window:hide()
+                                        return EVENT_CONSUME
+                                elseif evt:getKeycode() == KEY_GO then
+                                        window:bumpRight()
+                                        return EVENT_CONSUME
+                                end
+                        end
+                )
+        else
+                window:addWidget(menu)
+        end
+
         self:tieAndShowWindow(window)
         return window
 end
 
 function skin(self, s)
-
-        s.test_style = {}
-        s.test_style.itemHeight = 68
-
-        s.iconitem = {}
-        s.iconitem.order = { "icon", "text" }
-        s.iconitem.text = {}
-        s.iconitem.text.w = WH_FILL
-        s.iconitem.text.padding = { 12, 8, 8, 8 }
-        s.iconitem.text.align = "top-left"
-        s.iconitem.text.font = FONT_13px
-        s.iconitem.text.lineHeight = 16
-        s.iconitem.text.line = {
-                {
-                        font = FONT_BOLD_13px,
-                        height = 17
-                }
-        }
-        s.iconitem.text.fg = TEXT_COLOR
-        s.iconitem.text.sh = TEXT_SH_COLOR
-        s.iconitem.icon = {}
-        s.iconitem.icon.align = "left"
-        s.iconitem.icon.img = nil
-        s.iconitem.icon.padding = { 5, 0, 0, 0 }
+        s.big_menu = {}
+        s.big_menu.itemHeight = 68
 end
+
+-- Discovering process
+local discover_socket
+local function _discoverPacket()
+        return "CALAOS_DISCOVER"
+end
+
+local function _discoverSink(chunk, err)
+        if err then
+                log:info("Calaos: Discover failed !")
+        elseif chunk then
+                log:info("Calaos: New calaosd found at address: " .. chunk.ip)
+                calaosd_ip = chunk.ip
+        end
+
+        discover_socket:free()
+end
+
+function Discover(self)
+        discover_socket = SocketUdp(jnt, _discoverSink, "CalaosDiscoverSocket")
+
+        --Send the discover packet on the network
+        discover_socket:send(_discoverPacket, "255.255.255.255", CALAOS_UDP_PORT)
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
