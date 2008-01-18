@@ -18,7 +18,7 @@ TestApplet overrides the following methods:
 
 
 -- stuff we use
-local setmetatable, tonumber, tostring = setmetatable, tonumber, tostring
+local setmetatable, tonumber, tostring, type = setmetatable, tonumber, tostring, type
 
 local io                     = require("io")
 local oo                     = require("loop.simple")
@@ -44,6 +44,9 @@ local Textinput              = require("jive.ui.Textinput")
 local Window                 = require("jive.ui.Window")
 local Timer                  = require("jive.ui.Timer")
 local SocketUdp              = require("jive.net.SocketUdp")
+local SocketTcp              = require("jive.net.SocketTcp")
+local socket                 = require("socket")
+local ltn12                  = require("ltn12")
 
 local log                    = require("jive.utils.log").addCategory("test", jive.utils.log.DEBUG)
 
@@ -62,8 +65,13 @@ local width, height = Framework:getScreenSize()
 local jnt = jnt
 
 local CALAOS_UDP_PORT = 4545
-
+local CALAOS_CLI_PORT = 4456
+local TIMEOUT = 60
 local calaosd_ip = nil
+local calaos_user = ""
+local calaos_pass = ""
+local wrong_user = false
+local _applet = nil
 
 module(...)
 oo.class(_M, Applet)
@@ -72,12 +80,27 @@ oo.class(_M, Applet)
 
 function startApplet(self)
 
+        _applet = self
+
+        if _applet:getSettings().calaos_user ~= nil or _applet:getSettings().calaos_user ~= "" then
+                calaos_user = _applet:getSettings().calaos_user
+        end
+        if _applet:getSettings().calaos_pass ~= nil or _applet:getSettings().calaos_pass ~= "" then
+                calaos_pass = _applet:getSettings().calaos_pass
+        end
+
         -- Discover the calaosd server
         Discover()
 
-        self.window = self:newWindow("Calaos Home")
+        self.window = self:newWindow()
         self:tieAndShowWindow(self.window)
         return self.window
+end
+
+function free()
+        if csocket then
+                csocket:free()
+        end
 end
 
 function displayName(self)
@@ -252,7 +275,58 @@ function calaosMainmenu(self)
                         end
                 )
         else
-                window:addWidget(menu)
+                if wrong_user == false then
+                        log:error("Calaos:DEBUG : login success2")
+                        window:addWidget(menu)
+                else
+                        local window_user = Window("window", "Nom d'utilisateur")
+                        local v = Textinput.textValue(calaos_user, 2, 50)
+                        local input = Textinput("textinput", v,
+                                        function(_, value)
+                                                log:info("Calaos Username: ", value)
+
+                                                calaos_user = tostring(value)
+                                                _applet:getSettings().calaos_user = calaos_user
+                                                _applet:storeSettings()
+
+                                                window_user:playSound("WINDOWSHOW")
+                                                window_user:hide()
+
+                                                local window_pass = Window("window", "Mot de passe")
+
+                                                local v = Textinput.textValue(calaos_pass, 2, 50)
+                                                local input = Textinput("textinput", v,
+                                                                function(_, value)
+                                                                        log:info("Calaos Password: ", value)
+
+                                                                        calaos_pass = tostring(value)
+                                                                        _applet:getSettings().calaos_pass = calaos_pass
+                                                                        _applet:storeSettings()
+
+                                                                        window_pass:playSound("WINDOWSHOW")
+                                                                        window_pass:hide(Window.transitionPushLeft)
+                                                                        window_user:hide(Window.transitionPushLeft)
+
+                                                                        -- reconnect
+                                                                        CalaosConnect(function () self:calaosMainmenu() end,
+                                                                                      function () self:calaosMainmenu() end)
+
+                                                                        return true
+                                                                end)
+
+                                                window_pass:addWidget(Textarea("help", "Veuillez entrer votre mot de passe."))
+                                                window_pass:addWidget(input)
+                                                self:tieAndShowWindow(window_pass)
+
+                                                return true
+                                        end)
+
+                        window_user:addWidget(Textarea("help", "Veuillez entrer votre nom d'utilisateur."))
+                        window_user:addWidget(input)
+                        self:tieAndShowWindow(window_user)
+
+                        return window_user
+                end
         end
 
         self:tieAndShowWindow(window)
@@ -279,6 +353,11 @@ local function _discoverSink(chunk, err)
         end
 
         discover_socket:free()
+
+        -- try to connect to calaosd
+        if calaosd_ip then
+                CalaosConnect()
+        end
 end
 
 function Discover(self)
@@ -287,6 +366,203 @@ function Discover(self)
         --Send the discover packet on the network
         discover_socket:send(_discoverPacket, "255.255.255.255", CALAOS_UDP_PORT)
 end
+
+-- Some socket functions --------------
+local csocket = nil
+function CalaosConnect(good_login, false_login)
+        if csocket == nil then
+                csocket = SocketTcp(jnt, calaosd_ip, CALAOS_CLI_PORT, "CalaosCli")
+        end
+
+        if not csocket:connected() then
+                local err = socket.skip(1, csocket:t_connect())
+
+                if err then
+                        log:error("Calaos: CalaosConnect: ", err)
+                        csocket:close(err)
+                        return
+                end
+
+                SendCommand("login " .. calaos_user .. " " .. calaos_pass,
+                        function (chunk, err)
+                                if err == 'closed' then
+                                        wrong_user = true
+                                        if false_login then
+                                                false_login()
+                                        end
+                                else
+                                        log:info("Calaos:DEBUG : login success")
+                                        wrong_user = false
+                                        if good_login then
+                                                good_login()
+                                        end
+                                end
+                        end
+                )
+        end
+end
+
+-- jive-keep-open socket sink (Took from SocketHttp.lua)
+-- our "keep-open" sink, added to the socket namespace so we can use it like any other
+-- our version is non blocking
+socket.sinkt["jive-keep-open"] = function(sock)
+        local first = 0
+        return setmetatable(
+                {
+                        getfd = function() return sock:getfd() end,
+                        dirty = function() return sock:dirty() end
+                },
+                {
+                        __call = function(self, chunk, err)
+--                              log:debug("jive-keep-open sink(", chunk and #chunk, ", ", tostring(err), ", ", tostring(first), ")")
+                                if chunk then
+                                        local res, err
+                                        -- if send times out, err is 'timeout' and first is updated.
+                                        res, err, first = sock:send(chunk, first+1)
+--                                      log:debug("jive-keep-open sent - first is ", tostring(first), " returning ", tostring(res), ", " , tostring(err))
+                                        -- we return the err
+                                        return res, err
+                                else
+                                        return 1
+                                end
+                        end
+                }
+        )
+end
+
+function SendCommand(cmd, callback)
+
+        log:info("Calaos Network, sending: ", cmd)
+
+        local source = function ()
+                return cmd .. string.char(0x0D) .. string.char(0x0A)
+        end
+
+        -- using jive non blocking sink
+        local sink = socket.sink('jive-keep-open', csocket.t_sock)
+
+        local pump = function (NetworkThreadErr)
+
+                if NetworkThreadErr then
+                        log:error("Calaos: SendCommand.pump: ", NetworkThreadErr)
+                        csocket:close(NetworkThreadErr)
+                        return
+                end
+
+                local ret, err = ltn12.pump.step(source, sink)
+
+                if err then
+                        -- do nothing on timeout, we will be called again to send the rest of the data...
+                        if err == 'timeout' then
+                                return
+                        end
+
+                        -- handle any "real" error
+                        log:error("Calaos: SendCommand.pump: ", err)
+                        csocket:close(err)
+                        return
+                end
+
+                csocket:t_removeWrite()
+
+                -- We're done sending request, now read answer...
+                csocket:t_addRead(_getRead_pump(callback), TIMEOUT)
+        end
+
+        csocket:t_addWrite(pump, TIMEOUT)
+end
+
+function _getRead_pump(sink)
+
+        local source = function()
+
+                local line, err = csocket.t_sock:receive('*l')
+                if err then
+                        return nil, err
+                end
+
+                if line == "" then
+                        -- done receiving
+                        return nil
+                end
+
+                log:info("Calaos Network, received: ", line)
+
+                return line
+        end
+
+        local pump = function (NetworkThreadErr)
+
+                if NetworkThreadErr then
+                        log:error("Calaos: RecvCommand.pump: ", NetworkThreadErr)
+                        csocket:close(NetworkThreadErr)
+                        return
+                end
+
+                while true do
+                        local ret, err = ltn12.pump.step(source, sink)
+
+                        if err then
+
+                                if err == 'timeout' then
+                                        log:debug("Calaos: RecvCommand.pump - timeout")
+                                        -- more next time
+                                        return
+                                end
+
+                                log:error("Calaos: RecvCommand.pump:", err)
+                                csocket:t_removeRead()
+                                csocket:close(err)
+                                return
+
+                        elseif not ret then
+
+                                -- we're done
+                                csocket:t_removeRead()
+                                return
+                        end
+                end
+        end
+
+        return pump
+end
+
+-- ------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
