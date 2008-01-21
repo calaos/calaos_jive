@@ -1,18 +1,8 @@
 
 --[[
-=head1 NAME
 
-applets.Test.TestMeta - Test meta-info
+Calaos Applet
 
-=head1 DESCRIPTION
-
-See L<applets.Test.TestApplet>.
-
-=head1 FUNCTIONS
-
-See L<jive.AppletMeta> for a description of standard applet meta functions.
-
-=cut
 --]]
 
 
@@ -53,6 +43,7 @@ end
 
 Copyright 2008 Calaos. All Rights Reserved.
 
-=cut
+http://www.calaos.fr
+
 --]]
 

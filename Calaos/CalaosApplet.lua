@@ -680,30 +680,7 @@ function _addIODimmer(self, old_window, room_type, room_name, room_id, menu, id,
                                 text = "Varier",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        local swindow = Window("window", "", "albumtitle")
-                                        swindow:setTitleWidget(Group("albumtitle", {
-                                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
-                                        local slider = Slider("slider", 0, 100, 50,--tonumber(state),
-                                                function(slider, value, done)
-                                                        if done then
-                                                                self:CSendCommand("output " .. id .. " set set%20" .. value,
-                                                                        function (chunk, err)
-                                                                                window:playSound("WINDOWSHOW")
-                                                                                swindow:hide()
-                                                                                window:hide()
-                                                                                old_window:hide()
-                                                                                self:calaosRoommenu(room_type, room_name, room_id)
-                                                                        end
-                                                                )
-                                                        end
-                                                end)
-
-                                        local help = Textarea("help", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
-
-                                        swindow:addWidget(slider)
-                                        swindow:addWidget(help)
-                                        self:tieAndShowWindow(swindow)
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window, "set")
                                 end
                         })
 
@@ -711,6 +688,43 @@ function _addIODimmer(self, old_window, room_type, room_name, room_id, menu, id,
                         self:tieAndShowWindow(window)
                 end
         })
+end
+
+function _ShowSlider(self, room_name, room_type, name, state, id, room_id, window, old_window, cmd)
+
+        local swindow = Window("window", "", "albumtitle")
+
+        swindow:setTitleWidget(
+                Group("albumtitle", {
+                        text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
+                        icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type)))
+                })
+        )
+
+        log:info("Calaos:DEBUG: state = ", state)
+
+        local slider = Slider("slider", 0, 50, tonumber(state) / 2,
+                function(slider, value, done)
+                        if done then
+                                log:info("Calaos:DEBUG: New value = ", value)
+                                self:CSendCommand("output " .. id .. " set " .. cmd .. "%20" .. value * 2,
+                                        function (chunk, err)
+                                                swindow:playSound("WINDOWSHOW")
+                                                swindow:hide()
+                                                window:hide()
+                                                old_window:hide()
+                                                self:calaosRoommenu(room_type, room_name, room_id)
+                                        end
+                                )
+                        end
+                end)
+
+        local help = Textarea("help", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
+
+        swindow:addWidget(help)
+        swindow:addWidget(slider)
+        self:tieAndShowWindow(swindow)
+
 end
 
 function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, id, name, gtype, state, itype)
@@ -766,7 +780,7 @@ function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, 
                                 text = "Varier rouge",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        window:bumpRight();
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window, "set_red")
                                 end
                         })
 
@@ -774,7 +788,7 @@ function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, 
                                 text = "Varier vert",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        window:bumpRight();
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window, "set_green")
                                 end
                         })
 
@@ -782,7 +796,7 @@ function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, 
                                 text = "Varier bleu",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        window:bumpRight();
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window, "set_blue")
                                 end
                         })
 
@@ -860,7 +874,7 @@ function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id
                                 text = "Fixer position",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        window:bumpRight();
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window)
                                 end
                         })
                         end
