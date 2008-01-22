@@ -40,6 +40,8 @@ local Group                  = require("jive.ui.Group")
 local Timer                  = require("jive.ui.Timer")
 local SocketUdp              = require("jive.net.SocketUdp")
 local SocketTcp              = require("jive.net.SocketTcp")
+local SocketHttp             = require("jive.net.SocketHttp")
+local RequestHttp            = require("jive.net.RequestHttp")
 local Tile                   = require("jive.ui.Tile")
 local Font                   = require("jive.ui.Font")
 local socket                 = require("socket")
@@ -68,8 +70,11 @@ local TIMEOUT = 60
 local calaosd_ip = nil
 local calaos_user = ""
 local calaos_pass = ""
+local cameraUpdateTime = 1000
 local wrong_user = false
 local _applet = nil
+
+local _simpleCamTimer = nil
 
 module(...)
 oo.class(_M, Applet)
@@ -115,6 +120,9 @@ function startApplet(self)
         if _applet:getSettings().calaos_pass ~= nil or _applet:getSettings().calaos_pass ~= "" then
                 calaos_pass = _applet:getSettings().calaos_pass
         end
+        if _applet:getSettings().cameraUpdateTime ~= nil then
+                cameraUpdateTime = _applet:getSettings().cameraUpdateTime
+        end
 
         -- Discover the calaosd server
         Discover()
@@ -128,6 +136,18 @@ function free()
         calaosd_ip = nil
         if csocket then
                 csocket:free()
+                csocket = nil
+        end
+        wrong_user = false
+        _applet = nil
+        srf = nil
+        window = nil
+        cameraUpdateTime = 1000
+
+        clearCameraPool()
+        if _simpleCamTimer then
+                _simpleCamTimer:stop()
+                _simpleCamTimer = nil
         end
 end
 
@@ -231,11 +251,11 @@ function calaosMainmenu(self)
                 },
                 {
                         style = "big_item",
-                        text = "Multimedia\nVisualiser ses caméras de surveillance",
+                        text = "Media\nVisualiser ses caméras de surveillance",
                         icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/media_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
-
+                                self:calaosMediamenu()
                         end
                 },
                 {
@@ -244,7 +264,52 @@ function calaosMainmenu(self)
                         icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/config_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
+                                local config_window = Window("window", "", "albumtitle")
+                                config_window:setTitleWidget(Group("albumtitle", {
+                                        text = Label("text", "Calaos Home Applet\nConfiguration"),
+                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/config_icon.png")) }))
 
+                                local menu = SimpleMenu("menu", {
+                                {
+                                        text = "Vitesse de rafraichissement des caméras",
+                                        sound = "WINDOWSHOW",
+                                        callback = function(event, ...)
+                                                local window = Window("window", "", "albumtitle")
+                                                window:setTitleWidget(Group("albumtitle", {
+                                                        text = Label("text", "Configuration\nVitesse de rafraichissement des caméras"),
+                                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/config_icon.png")) }))
+                                                local label = Label("text", "Valeur: " .. tostring(cameraUpdateTime) .. " ms")
+
+                                                local slider = Slider("slider", 1, 50, (cameraUpdateTime * 50) / 4950,
+                                                        function(slider, value, done)
+                                                                log:warn("slider value is ", value, " ", done)
+                                                                label:setValue("Valeur: " .. tostring((value * 4950) / 50 - 50) .. " ms")
+
+                                                                if done then
+                                                                        window:playSound("WINDOWSHOW")
+                                                                        window:hide(Window.transitionPushLeft)
+
+                                                                        cameraUpdateTime = (value * 4950) / 50 - 50
+
+                                                                        _applet:getSettings().cameraUpdateTime = cameraUpdateTime
+                                                                        _applet:storeSettings()
+                                                                end
+                                                        end)
+
+                                                local help = Textarea("help", "We can add some help text here.\n\nThis screen is for testing the slider.")
+
+                                                window:addWidget(help)
+                                                window:addWidget(slider)
+                                                window:addWidget(label)
+
+                                                window:focusWidget(slider)
+
+                                                self:tieAndShowWindow(window)
+                                        end
+                                } } )
+
+                                config_window:addWidget(menu)
+                                self:tieAndShowWindow(config_window)
                         end
                 },
                 {
@@ -466,7 +531,6 @@ function calaosRoommenu(self, room_type, room_name, room_id)
                                         return
                                 end
 
---                                 self:CSendCommand(iotype .. " " .. io_id .. " get",
                                 self:addCSendCommand(iotype .. " " .. io_id .. " get",
                                         function (chunk, err)
                                                 local t = Split(chunk, " ")
@@ -885,6 +949,230 @@ function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id
         })
 end
 
+function calaosMediamenu(self)
+        local window = Window("window", "Calaos Media")
+        local menu = SimpleMenu("big_menu")
+
+        self:CSendCommand("camera ?",
+                function (chunk, err)
+                        local t = Split(chunk, " ")
+                        local nb = tonumber(t[2])
+
+                        clearCameraPool()
+
+                        -- timer to return to home screen after a while, moslty to avoid battery comsuption
+                        local _returnTimer = Timer(1000 * 60, -- 1 min
+                                function ()
+                                        window:hide()
+                                        clearCameraPool()
+                                end,
+                                true)
+                        _returnTimer:start()
+
+                        for i = 0, nb - 1 do
+                                self:addCSendCommand("camera get " .. tostring(i),
+                                        function (chunk, err)
+                                                local t = Split(chunk, " ")
+                                                local cname = nil
+                                                local jpeg_url = nil
+                                                local ptz = false
+
+                                                for i = 3, #t do
+                                                        local o = Split(url.unescape(t[i]), ":", 2)
+
+                                                        if o[1] == "name" then cname = o[2] end
+                                                        if o[1] == "jpeg_url" then jpeg_url = o[2] end
+                                                        if o[1] == "ptz" then ptz = o[2] end
+                                                end
+
+                                                local item = {
+                                                        text = cname,
+                                                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/no-cam.png")),
+                                                        sound = "WINDOWSHOW",
+                                                        callback =
+                                                                function(event, item)
+                                                                        _returnTimer:stop()
+
+                                                                        -- Show the fullscreen camera
+                                                                        local cwindow = Window("window", "Calaos Media", "albumtitle")
+
+                                                                        cwindow:setTitleWidget(Group("albumtitle", {
+                                                                                text = Label("text", "Calaos Media:\n" .. cname),
+                                                                                icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/icon_cam.png")) }))
+
+                                                                        local srf = Surface:newRGBA(width, height)
+                                                                        srf:filledRectangle(0, 0, width, height, 0x00000000)
+                                                                        local bg = Icon("background", srf)
+
+                                                                        cwindow:addWidget(bg)
+
+                                                                        local cambg = Sprite(width, height, "applets/Calaos/graphics/cambg.png")
+                                                                        cwindow:addWidget(cambg.sprite)
+
+                                                                        bg:addAnimation(
+                                                                                function()
+                                                                                        Sprite_draw(cambg)
+                                                                                end,
+                                                                                FRAME_RATE
+                                                                        )
+
+                                                                        -- Back/Ok key
+                                                                        cwindow:addListener(EVENT_KEY_PRESS, 
+                                                                                function(evt)
+                                                                                        if evt:getKeycode() == KEY_BACK then
+                                                                                                cwindow:hide()
+                                                                                                window:hide()
+                                                                                                if _simpleCamTimer then
+                                                                                                        _simpleCamTimer:stop()
+                                                                                                        _simpleCamTimer = nil
+                                                                                                end
+                                                                                                self:calaosMediamenu()
+                                                                                        elseif evt:getKeycode() == KEY_GO then
+                                                                                                cwindow:bumpRight()
+                                                                                        end
+                                                                                end
+                                                                        )
+
+                                                                        -- timer to return to home screen after a while, moslty to avoid battery comsuption
+                                                                        local _returnTimer = Timer(1000 * 60, -- 1 min
+                                                                                function ()
+                                                                                        cwindow:hide()
+                                                                                        window:hide()
+                                                                                        if _simpleCamTimer then
+                                                                                                _simpleCamTimer:stop()
+                                                                                                _simpleCamTimer = nil
+                                                                                        end
+                                                                                end,
+                                                                                true)
+                                                                        _returnTimer:start()
+
+                                                                        _simpleCamTimer = Timer(cameraUpdateTime,
+                                                                                function()
+                                                                                        local req = RequestHttp(
+                                                                                                        function(chunk, err)
+                                                                                                                if chunk then
+                                                                                                                        local srf = Surface:loadImageData(chunk, #chunk)
+--                                                                                                                         srf = srf:zoom(56, 56)
+
+                                                                                                                        local w,h = srf:getSize()
+                                                                                                                        if w < h then
+                                                                                                                                srf = srf:rotozoom(0, 154 / w, 1)
+                                                                                                                        else
+                                                                                                                                srf = srf:rotozoom(0, 154 / h, 1)
+                                                                                                                        end
+
+                                                                                                                        -- Draw the camera image
+                                                                                                                        srf:blit(cambg.sprite:getImage(), 19, 19)
+                                                                                                                end
+                                                                                                        end,
+                                                                                                        'GET',
+                                                                                                        jpeg_url)
+
+                                                                                        local uri = req:getURI()
+                                                                                        local http = SocketHttp(jnt, uri.host, uri.port, uri.host)
+
+                                                                                        -- fetch image
+                                                                                        http:fetch(req)
+                                                                                end)
+                                                                        _simpleCamTimer:start()
+
+                                                                        self:tieAndShowWindow(cwindow)
+                                                                end
+                                                }
+
+                                                menu:addItem(item)
+                                                addCameraPool(menu, item, jpeg_url, i - 1)
+                                        end
+                                )
+                        end
+
+                        -- run all the jobs
+                        self:runJobList(startCameraPool)
+                end
+        )
+
+        -- Back/Ok key
+        window:addListener(EVENT_KEY_PRESS,
+                function(evt)
+                        if evt:getKeycode() == KEY_BACK or
+                           evt:getKeycode() == KEY_GO then
+                                clearCameraPool()
+                        end
+                end
+        )
+
+        window:addWidget(menu)
+        self:tieAndShowWindow(window)
+end
+
+local camPool = { }
+local _camCurrent = 1
+local _camTimer = nil
+function clearCameraPool()
+        camPool = { }
+        _camCurrent = 1
+end
+
+function addCameraPool(menu, item, url, index)
+        table.insert(camPool, { menu, item, url, index } )
+end
+
+function startCameraPool()
+
+        if #camPool > 0 then
+
+                local t = camPool[_camCurrent]
+                local menu = t[1]
+                local item = t[2]
+                local jpeg_url = t[3]
+                local index = t[4]
+
+                local req = RequestHttp(
+                                function(chunk, err)
+                                        if chunk then
+                                                local srf = Surface:loadImageData(chunk, #chunk)
+--                                                 srf = srf:zoom(56, 56)
+
+                                                local w,h = srf:getSize()
+                                                if w < h then
+                                                        srf = srf:rotozoom(0, 56 / w, 1)
+                                                else
+                                                        srf = srf:rotozoom(0, 56 / h, 1)
+                                                end
+
+                                                -- update item image
+                                                item.icon = Icon("image", srf)
+                                                menu:replaceIndex(item, index)
+                                                menu:reLayout()
+
+                                                if _camCurrent == 1 then
+                                                        _camTimer = Timer(cameraUpdateTime,
+                                                                function()
+                                                                        startCameraPool()
+                                                                end,
+                                                                true)
+                                                        _camTimer:start()
+                                                else
+                                                        startCameraPool()
+                                                end
+                                        end
+                                end,
+                                'GET',
+                                jpeg_url)
+
+                local uri = req:getURI()
+                local http = SocketHttp(jnt, uri.host, uri.port, uri.host)
+
+                -- fetch image
+                http:fetch(req)
+
+                _camCurrent = _camCurrent + 1
+                if _camCurrent > #camPool then
+                        _camCurrent = 1
+                end
+        end
+end
+
 -- Some skins re-definition
 function skin(self, s)
 
@@ -1086,7 +1374,7 @@ function clearJobList()
         _jobList = {}
 end
 
-function runJobList(self)
+function runJobList(self, callback_end)
 
         if #_jobList > 0 then
                 local t = _jobList[1]
@@ -1098,9 +1386,13 @@ function runJobList(self)
                                 if callback then callback(chunk, err) end
 
                                 -- run the next job
-                                self:runJobList()
+                                self:runJobList(callback_end)
                         end
                 )
+        else
+                if callback_end then
+                        callback_end()
+                end
         end
 end
 
