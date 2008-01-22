@@ -296,7 +296,7 @@ function calaosMainmenu(self)
                                                                 end
                                                         end)
 
-                                                local help = Textarea("help", "We can add some help text here.\n\nThis screen is for testing the slider.")
+                                                local help = Textarea("help", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
 
                                                 window:addWidget(help)
                                                 window:addWidget(slider)
