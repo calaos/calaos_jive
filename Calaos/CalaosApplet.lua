@@ -202,7 +202,7 @@ function newWindow(self, ...)
 
         window:addWidget(self.bg)
 
-        local logo = Sprite(width, height, "applets/Calaos/graphics/logo.png")
+        local logo = Sprite(width, height, "applets/Calaos/logo.png")
         window:addWidget(logo.sprite)
 
         -- Back key
@@ -243,7 +243,7 @@ function calaosMainmenu(self)
                 {
                         style = "big_item",
                         text = "My Home\nGérer sa maison",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/home_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/home_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:calaosHomemenu()
@@ -252,7 +252,7 @@ function calaosMainmenu(self)
                 {
                         style = "big_item",
                         text = "Media\nVisualiser ses caméras de surveillance",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/media_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/media_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:calaosMediamenu()
@@ -261,13 +261,13 @@ function calaosMainmenu(self)
                 {
                         style = "big_item",
                         text = "Configuration\nConfiguration de l'applet",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/config_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/config_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 local config_window = Window("window", "", "albumtitle")
                                 config_window:setTitleWidget(Group("albumtitle", {
                                         text = Label("text", "Calaos Home Applet\nConfiguration"),
-                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/config_icon.png")) }))
+                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/config_icon.png")) }))
 
                                 local menu = SimpleMenu("menu", {
                                 {
@@ -277,7 +277,7 @@ function calaosMainmenu(self)
                                                 local window = Window("window", "", "albumtitle")
                                                 window:setTitleWidget(Group("albumtitle", {
                                                         text = Label("text", "Configuration\nVitesse de rafraichissement des caméras"),
-                                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/config_icon.png")) }))
+                                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/config_icon.png")) }))
                                                 local label = Label("text", "Valeur: " .. tostring(cameraUpdateTime) .. " ms")
 
                                                 local slider = Slider("slider", 1, 50, (cameraUpdateTime * 50) / 4950,
@@ -315,7 +315,7 @@ function calaosMainmenu(self)
                 {
                         style = "big_item",
                         text = "A propos\nA propos de l'applet Calaos",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/about_icon.png")),
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/about_icon.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:CSendCommand("version ?",
@@ -323,7 +323,7 @@ function calaosMainmenu(self)
                                                 local window = Window("window", self:displayName())
                                                 local t = Split(url.unescape(chunk), " ")
                                                 local about_msg = Textarea("help", "Calaos Home applet for Jive remotes.\nCalaos server version " .. t[2] .. "\n\nwww.calaos.fr\nCopyright 2008 Calaos")
-                                                local logo = Sprite(width, height, "applets/Calaos/graphics/logo.png")
+                                                local logo = Sprite(width, height, "applets/Calaos/logo.png")
                                                 window:addWidget(logo.sprite)
                                                 window:addWidget(about_msg)
 
@@ -349,7 +349,7 @@ function calaosMainmenu(self)
         if calaosd_ip == nil then
                 local error_msg = Textarea("help", "Aucun serveur domotique Calaos trouvé sur le réseau...\n\nVeuillez vérifier les paramètres Wifi et/ou réseau de votre installation.")
 
-                local ierror = Sprite(width, height, "applets/Calaos/graphics/no-server.png")
+                local ierror = Sprite(width, height, "applets/Calaos/no-server.png")
                 window:addWidget(ierror.sprite)
                 window:addWidget(error_msg)
 
@@ -583,7 +583,7 @@ function _addIOScenario(self, old_window, room_type, room_name, room_id, menu, i
 
         menu:addItem({
                 text = name,
-                icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/icon_scenario_small.png")),
+                icon = Icon("image", Surface:loadImage("applets/Calaos/icon_scenario_small.png")),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
                         local window = Window("window", "", "albumtitle")
@@ -614,7 +614,7 @@ end
 
 function _addIOWODigital(self, old_window, room_type, room_name, room_id, menu, id, name, gtype, state, itype)
 
-        local icon_file = "applets/Calaos/graphics/"
+        local icon_file = "applets/Calaos/"
 
         if gtype == "light" then
                 if state == "true" then
@@ -693,7 +693,7 @@ end
 
 function _addIODimmer(self, old_window, room_type, room_name, room_id, menu, id, name, gtype, state, itype)
 
-        local icon_file = "applets/Calaos/graphics/"
+        local icon_file = "applets/Calaos/"
 
         if state == "true" then
                 icon_file = icon_file .. "icon_light_on.png"
@@ -793,7 +793,7 @@ end
 
 function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, id, name, gtype, state, itype)
 
-        local icon_file = "applets/Calaos/graphics/"
+        local icon_file = "applets/Calaos/"
 
         if state == "true" then
                 icon_file = icon_file .. "icon_light_on.png"
@@ -872,7 +872,7 @@ end
 
 function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id, name, gtype, state, itype)
 
-        local icon_file = "applets/Calaos/graphics/"
+        local icon_file = "applets/Calaos/"
 
         if state == "true" then
                 icon_file = icon_file .. "icon_shutter_on.png"
@@ -987,7 +987,7 @@ function calaosMediamenu(self)
 
                                                 local item = {
                                                         text = cname,
-                                                        icon = Icon("image", Surface:loadImage("applets/Calaos/graphics/no-cam.png")),
+                                                        icon = Icon("image", Surface:loadImage("applets/Calaos/no-cam.png")),
                                                         sound = "WINDOWSHOW",
                                                         callback =
                                                                 function(event, item)
@@ -998,7 +998,7 @@ function calaosMediamenu(self)
 
                                                                         cwindow:setTitleWidget(Group("albumtitle", {
                                                                                 text = Label("text", "Calaos Media:\n" .. cname),
-                                                                                icon = Icon("icon", Surface:loadImage("applets/Calaos/graphics/icon_cam.png")) }))
+                                                                                icon = Icon("icon", Surface:loadImage("applets/Calaos/icon_cam.png")) }))
 
                                                                         local srf = Surface:newRGBA(width, height)
                                                                         srf:filledRectangle(0, 0, width, height, 0x00000000)
@@ -1006,7 +1006,7 @@ function calaosMediamenu(self)
 
                                                                         cwindow:addWidget(bg)
 
-                                                                        local cambg = Sprite(width, height, "applets/Calaos/graphics/cambg.png")
+                                                                        local cambg = Sprite(width, height, "applets/Calaos/cambg.png")
                                                                         cwindow:addWidget(cambg.sprite)
 
                                                                         bg:addAnimation(
@@ -1533,7 +1533,7 @@ function _getRealRoomName(room)
 end
 
 function _getRealPicture(room)
-        local pict = "applets/Calaos/graphics/mini-"
+        local pict = "applets/Calaos/mini-"
 
         if room == "lounge" or room == "salon" then
                 return pict .. "lounge.png"
