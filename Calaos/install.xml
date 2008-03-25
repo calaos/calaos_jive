@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+
+<extension>
+        <jive>
+                <applet>
+                        <version>0.1</version>
+                        <name>Calaos</name>
+                        <file>Calaos.zip</file>
+                </applet>
+        </jive>
+</extension>
+ 

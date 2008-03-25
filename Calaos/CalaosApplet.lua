@@ -1398,7 +1398,7 @@ end
 
 function SendCommand(cmd, callback)
 
-        log:info("Calaos Network, sending: ", cmd)
+--         log:info("Calaos Network, sending: ", cmd)
 
         local source = function ()
                 return cmd .. string.char(0x0D) .. string.char(0x0A)
@@ -1452,7 +1452,7 @@ function _getRead_pump(sink)
                         return nil
                 end
 
-                log:info("Calaos Network, received: ", line)
+--                 log:info("Calaos Network, received: ", line)
 
                 return line
         end
