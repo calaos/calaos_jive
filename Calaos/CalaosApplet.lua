@@ -538,6 +538,8 @@ function calaosRoommenu(self, room_type, room_name, room_id)
                                                 local itype = nil
                                                 local gtype = nil
                                                 local state = nil
+                                                local visible = nil
+                                                local rw = nil
 
                                                 for i = 2, #t do
                                                         local o = Split(url.unescape(t[i]), ":", 2)
@@ -546,9 +548,16 @@ function calaosRoommenu(self, room_type, room_name, room_id)
                                                         if o[1] == "type" then itype = o[2] end
                                                         if o[1] == "gtype" then gtype = o[2] end
                                                         if o[1] == "state" then state = o[2] end
+                                                        if o[1] == "visible" then visible = o[2] end
+                                                        if o[1] == "rw" then rw = o[2] end
                                                 end
 
-                                                if itype == "scenario" then
+                                                -- Only show visible objects
+                                                if visible ~= "true" then
+                                                        return
+                                                end
+
+                                                if itype == "scenario" and iotype == "input" then
                                                         self:_addIOScenario(window, room_type, room_name, room_id, menu, io_id, iname, itype)
                                                 end
                                                 if itype == "WODigital" then
@@ -565,6 +574,15 @@ function calaosRoommenu(self, room_type, room_name, room_id)
                                                 end
                                                 if itype == "WOVoletSmart" then
                                                         self:_addIOShutter(window, room_type, room_name, room_id, menu, io_id, iname, gtype, state, itype)
+                                                end
+                                                if itype == "InternalBoolOutput" then
+                                                        self:_addBool(window, room_type, room_name, room_id, menu, io_id, iname, gtype, state, itype, rw)
+                                                end
+                                                if itype == "InternalIntOutput" then
+                                                        self:_addInt(window, room_type, room_name, room_id, menu, io_id, iname, gtype, state, itype, rw)
+                                                end
+                                                if itype == "InternalStringOutput" then
+                                                        self:_addString(window, room_type, room_name, room_id, menu, io_id, iname, gtype, state, itype, rw)
                                                 end
                                         end
                                 )
@@ -765,6 +783,11 @@ function _ShowSlider(self, room_name, room_type, name, state, id, room_id, windo
                 })
         )
 
+        local o = Split(state, " ", 2)
+        if #o > 1 then
+                state = o[2]
+        end
+
         log:info("Calaos:DEBUG: state = ", state)
 
         local slider = Slider("slider", 0, 50, tonumber(state) / 2,
@@ -938,7 +961,7 @@ function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id
                                 text = "Fixer position",
                                 sound = "PLAYBACK",
                                 callback = function(event, item)
-                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window)
+                                        self:_ShowSlider(room_name, room_type, name, state, id, room_id, window, old_window, "set")
                                 end
                         })
                         end
