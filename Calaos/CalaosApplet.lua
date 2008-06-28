@@ -198,7 +198,7 @@ function newWindow(self, ...)
         self.bg = Icon("background", srf)
 
         local start_snd = Audio:loadSound("applets/Calaos/calaos_start.wav", 0)
---         start_snd:play()
+        start_snd:play()
 
         window:addWidget(self.bg)
 
