@@ -9,10 +9,13 @@ Calaos Applet
 local oo            = require("loop.simple")
 
 local AppletMeta    = require("jive.AppletMeta")
+local Surface       = require("jive.ui.Surface")
+local Icon          = require("jive.ui.Icon")
 
 local appletManager = appletManager
 local jiveMain      = jiveMain
 
+local debug         = require("jive.utils.log")
 
 module(...)
 oo.class(_M, AppletMeta)
@@ -30,9 +33,9 @@ function defaultSettings(meta)
 end
 
 function registerApplet(meta)
-	
-	jiveMain:addItem(meta:menuItem('appletCalaos', 'home', "Calaos Home", function(applet, ...) applet:startApplet(meta) end, 800))
-        jiveMain:loadSkin("Calaos", "skin")
+
+        local item = meta:menuItem('appletCalaos', 'home', "Calaos Home", function(applet, ...) applet:startApplet(meta) end, 800)
+        jiveMain:addItem(item)
 
 end
 

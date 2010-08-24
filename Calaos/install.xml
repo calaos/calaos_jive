@@ -3,8 +3,8 @@
 <extension>
         <jive>
                 <applet>
-                        <version>0.2</version>
-                        <name>Calaos</name>
+                        <version>1.0</version>
+                        <name>Calaos Home</name>
                         <file>Calaos.zip</file>
                 </applet>
         </jive>

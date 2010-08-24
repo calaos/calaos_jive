@@ -21,7 +21,7 @@ local string                 = require("string")
 local table                  = require("jive.utils.table")
 
 local Applet                 = require("jive.Applet")
-local Audio                  = require("jive.ui.Audio")
+--local Audio                  = require("jive.ui.Audio")
 local Checkbox               = require("jive.ui.Checkbox")
 local Choice                 = require("jive.ui.Choice")
 local Framework              = require("jive.ui.Framework")
@@ -48,7 +48,7 @@ local socket                 = require("socket")
 local url                    = require("socket.url")
 local ltn12                  = require("ltn12")
 
-local log                    = require("jive.utils.log").addCategory("test", jive.utils.log.DEBUG)
+local debug                  = require("jive.utils.log")
 
 local EVENT_KEY_PRESS        = jive.ui.EVENT_KEY_PRESS
 local EVENT_CONSUME          = jive.ui.EVENT_CONSUME
@@ -139,6 +139,11 @@ function free()
                 csocket = nil
         end
         wrong_user = false
+
+        if _applet.timer then
+                _applet:stop()
+        end
+
         _applet = nil
         srf = nil
         window = nil
@@ -149,6 +154,8 @@ function free()
                 _simpleCamTimer:stop()
                 _simpleCamTimer = nil
         end
+
+        return true
 end
 
 function displayName(self)
@@ -190,15 +197,23 @@ local function Sprite_draw_pos(self, x, y)
         sprite:setPosition(self.x, self.y)
 end
 
+local function Sprite_setIcon(self, icon, w, h)
+        self.sprite = nil
+        self.sprite = icon
+
+        self.width = w
+        self.height = h
+
+        self.x = self.screen_width / 2 - self.width / 2
+        self.y = self.screen_height / 2 - self.height / 2
+end
+
 function newWindow(self, ...)
         window = Window("window", self:displayName())
 
         srf = Surface:newRGBA(width, height)
         srf:filledRectangle(0, 0, width, height, 0x00000000)
         self.bg = Icon("background", srf)
-
-        local start_snd = Audio:loadSound("applets/Calaos/calaos_start.wav", 0)
-        start_snd:play()
 
         window:addWidget(self.bg)
 
@@ -226,7 +241,7 @@ function newWindow(self, ...)
                 FRAME_RATE
         )
 
-        self.timer = Timer(5000,
+        self.timer = Timer(4000,
                         function()
                                 self:calaosMainmenu()
                         end, true)
@@ -237,37 +252,33 @@ end
 
 function calaosMainmenu(self)
 
+        self.timer = nil
+
         local window = Window("window", self:displayName())
 
-        local menu = SimpleMenu("big_menu", {
+        local menu = SimpleMenu("menu", {
                 {
-                        style = "big_item",
-                        text = "My Home\nGérer sa maison",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/home_icon.png")),
+                        text = "Ma maison",
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/icon_home.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:calaosHomemenu()
                         end
                 },
                 {
-                        style = "big_item",
-                        text = "Media\nVisualiser ses caméras de surveillance",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/media_icon.png")),
+                        text = "Media",
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/icon_media.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:calaosMediamenu()
                         end
                 },
                 {
-                        style = "big_item",
-                        text = "Configuration\nConfiguration de l'applet",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/config_icon.png")),
+                        text = "Configuration",
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/icon_config.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
-                                local config_window = Window("window", "", "albumtitle")
-                                config_window:setTitleWidget(Group("albumtitle", {
-                                        text = Label("text", "Calaos Home Applet\nConfiguration"),
-                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/config_icon.png")) }))
+                                local config_window = Window("window", "Configuration")
 
                                 local menu = SimpleMenu("menu", {
                                 {
@@ -275,11 +286,7 @@ function calaosMainmenu(self)
                                         sound = "WINDOWSHOW",
                                         callback = function(event, ...)
                                                 local window = Window("window", "", "albumtitle")
-                                                window:setTitleWidget(Group("albumtitle", {
-                                                        text = Label("text", "Configuration\nVitesse de rafraichissement des caméras"),
-                                                        icon = Icon("icon", Surface:loadImage("applets/Calaos/config_icon.png")) }))
                                                 local label = Label("text", "Valeur: " .. tostring(cameraUpdateTime) .. " ms")
-
                                                 local slider = Slider("slider", 1, 50, (cameraUpdateTime * 50) / 4950,
                                                         function(slider, value, done)
                                                                 log:warn("slider value is ", value, " ", done)
@@ -296,7 +303,7 @@ function calaosMainmenu(self)
                                                                 end
                                                         end)
 
-                                                local help = Textarea("help", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
+                                                local help = Textarea("help_text", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
 
                                                 window:addWidget(help)
                                                 window:addWidget(slider)
@@ -313,31 +320,17 @@ function calaosMainmenu(self)
                         end
                 },
                 {
-                        style = "big_item",
-                        text = "A propos\nA propos de l'applet Calaos",
-                        icon = Icon("image", Surface:loadImage("applets/Calaos/about_icon.png")),
+                        text = "A propos",
+                        icon = Icon("image", Surface:loadImage("applets/Calaos/icon_about.png")),
                         sound = "WINDOWSHOW",
                         callback = function(event, ...)
                                 self:CSendCommand("version ?",
                                         function (chunk, err)
                                                 local window = Window("window", self:displayName())
                                                 local t = Split(url.unescape(chunk), " ")
-                                                local about_msg = Textarea("help", "Calaos Home applet for Jive remotes.\nCalaos server version " .. t[2] .. "\n\nwww.calaos.fr\nCopyright 2008 Calaos")
-                                                local logo = Sprite(width, height, "applets/Calaos/logo.png")
-                                                window:addWidget(logo.sprite)
-                                                window:addWidget(about_msg)
+                                                local about_msg = Textarea("text", "Calaos Home applet for Jive remotes.\nCalaos server version " .. t[2] .. "\n\nwww.calaos.fr\nCopyright 2010 Calaos")
 
-                                                window:addListener(EVENT_KEY_PRESS, 
-                                                        function(evt)
-                                                                if evt:getKeycode() == KEY_BACK then
-                                                                        window:hide()
-                                                                        return EVENT_CONSUME
-                                                                elseif evt:getKeycode() == KEY_GO then
-                                                                        window:bumpRight()
-                                                                        return EVENT_CONSUME
-                                                                end
-                                                        end
-                                                )
+                                                window:addWidget(about_msg)
 
                                                 self:tieAndShowWindow(window)
                                         end
@@ -347,7 +340,7 @@ function calaosMainmenu(self)
         })
 
         if calaosd_ip == nil then
-                local error_msg = Textarea("help", "Aucun serveur domotique Calaos trouvé sur le réseau...\n\nVeuillez vérifier les paramètres Wifi et/ou réseau de votre installation.")
+                local error_msg = Textarea("text", "Aucun serveur domotique Calaos trouvé sur le réseau...\n\nVeuillez vérifier les paramètres Wifi et/ou réseau de votre installation.")
 
                 local ierror = Sprite(width, height, "applets/Calaos/no-server.png")
                 window:addWidget(ierror.sprite)
@@ -441,7 +434,7 @@ function calaosHomemenu(self)
         self:CSendCommand("home ?",
                 function (chunk, err)
                         local window = Window("window", "Calaos Home")
-                        local menu = SimpleMenu("big_menu")
+                        local menu = SimpleMenu("menu")
 
                         local t = Split(chunk, " ")
                         table.remove(t, 1)
@@ -449,56 +442,54 @@ function calaosHomemenu(self)
                                 local t = Split(url.unescape(v), ":")
                                 local nb = tonumber(t[2])
                                 local room_type = t[1]
-                                menu:addItem({
-                                        style = "big_item",
-                                        text = _getRealRoomName(room_type),
-                                        icon = Icon("image", Surface:loadImage(_getRealPicture(room_type))),
-                                        sound = "WINDOWSHOW",
-                                        callback = function(event, ...)
+                                if (room_type ~= "Internal") then
+                                        menu:addItem({
+                                                text = _getRealRoomName(room_type),
+                                                icon = Icon("image", Surface:loadImage(_getRealPicture(room_type))),
+                                                sound = "WINDOWSHOW",
+                                                callback = function(event, ...)
 
-                                                local names = {}
+                                                        local names = {}
 
-                                                --get room infos
-                                                self:CSendCommand("home get " .. t[1],
-                                                        function (chunk, err)
-                                                                local t = Split(chunk, " ")
+                                                        --get room infos
+                                                        self:CSendCommand("home get " .. t[1],
+                                                                function (chunk, err)
+                                                                        local t = Split(chunk, " ")
 
-                                                                local cpt = 0
-                                                                for i = 3, #t, 2 do
-                                                                        cpt = cpt + 1
-                                                                        local tinfo = Split(url.unescape(t[i]), ":", 3)
-                                                                        names[cpt] = url.unescape(tinfo[3])
-                                                                end
-
-                                                                -- if we have multiple rooms for one romm_type, show a new room
-                                                                -- selection menu
-                                                                if nb > 1 then
-                                                                        local window = Window("window", "", "albumtitle")
-                                                                        window:setTitleWidget(Group("albumtitle", {
-                                                                                        text = Label("text", "Type de pièce:\n" .. _getRealRoomName(room_type)),
-                                                                                        icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
-                                                                        local menu = SimpleMenu("menu")
-
-                                                                        for i = 1, #names do
-                                                                                menu:addItem({
-                                                                                        text = names[i],
-                                                                                        sound = "WINDOWSHOW",
-                                                                                        callback = function(event, item)
-                                                                                                self:calaosRoommenu(room_type, names[i], i - 1)
-                                                                                        end
-                                                                                })
+                                                                        local cpt = 0
+                                                                        for i = 3, #t, 2 do
+                                                                                cpt = cpt + 1
+                                                                                local tinfo = Split(url.unescape(t[i]), ":", 3)
+                                                                                names[cpt] = url.unescape(tinfo[3])
                                                                         end
 
-                                                                        window:addWidget(menu)
-                                                                        self:tieAndShowWindow(window)
-                                                                else
-                                                                        self:calaosRoommenu(room_type, names[1], 0)
-                                                                end
+                                                                        -- if we have multiple rooms for one romm_type, show a new room
+                                                                        -- selection menu
+                                                                        if nb > 1 then
+                                                                                local window = Window("window", "Type de pièce: " .. _getRealRoomName(room_type))
+                                                                                local menu = SimpleMenu("menu")
 
-                                                        end
-                                                )
-                                        end
-                                })
+                                                                                for i = 1, #names do
+                                                                                        menu:addItem({
+                                                                                                text = names[i],
+                                                                                                sound = "WINDOWSHOW",
+                                                                                                callback = function(event, item)
+                                                                                                        self:calaosRoommenu(room_type, names[i], i - 1)
+                                                                                                end
+                                                                                        })
+                                                                                end
+
+                                                                                window:addWidget(menu)
+                                                                                self:tieAndShowWindow(window)
+                                                                        else
+                                                                                self:calaosRoommenu(room_type, names[1], 0)
+                                                                        end
+
+                                                                end
+                                                        )
+                                                end
+                                        })
+                                end
                         end
 
                         window:addWidget(menu)
@@ -511,11 +502,8 @@ end
 -- Show the Room menu: List all available items
 function calaosRoommenu(self, room_type, room_name, room_id)
 
-        local window = Window("window", "", "albumtitle")
-        window:setTitleWidget(Group("albumtitle", {
-                text = Label("text", "Vous êtes dans:\n" .. room_name),
-                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
-        local menu = SimpleMenu("io_menu")
+        local window = Window("window", "Vous êtes dans: " .. room_name)
+        local menu = SimpleMenu("menu")
 
         -- get room infos
         self:CSendCommand("room " .. room_type .. " get " .. tostring(room_id),
@@ -604,10 +592,7 @@ function _addIOScenario(self, old_window, room_type, room_name, room_id, menu, i
                 icon = Icon("image", Surface:loadImage("applets/Calaos/icon_scenario_small.png")),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
-                        local window = Window("window", "", "albumtitle")
-                        window:setTitleWidget(Group("albumtitle", {
-                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
+                        local window = Window("window", "Pièce: " .. room_name .. " / " .. name)
                         local menu = SimpleMenu("menu")
 
                         menu:addItem({
@@ -634,18 +619,10 @@ function _addIOWODigital(self, old_window, room_type, room_name, room_id, menu, 
 
         local icon_file = "applets/Calaos/"
 
-        if gtype == "light" then
-                if state == "true" then
-                        icon_file = icon_file .. "icon_light_on.png"
-                else
-                        icon_file = icon_file .. "icon_light_off.png"
-                end
+        if state == "true" then
+                icon_file = icon_file .. "icon_light_on.png"
         else
-                if state == "true" then
-                        icon_file = icon_file .. "icon_tor_on.png"
-                else
-                        icon_file = icon_file .. "icon_tor_off.png"
-                end
+                icon_file = icon_file .. "icon_light_off.png"
         end
 
         menu:addItem({
@@ -653,10 +630,7 @@ function _addIOWODigital(self, old_window, room_type, room_name, room_id, menu, 
                 icon = Icon("image", Surface:loadImage(icon_file)),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
-                        local window = Window("window", "", "albumtitle")
-                        window:setTitleWidget(Group("albumtitle", {
-                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
+                        local window = Window("window", "Pièce: " .. room_name .. " / " .. name)
                         local menu = SimpleMenu("menu")
 
                         menu:addItem({
@@ -724,10 +698,7 @@ function _addIODimmer(self, old_window, room_type, room_name, room_id, menu, id,
                 icon = Icon("image", Surface:loadImage(icon_file)),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
-                        local window = Window("window", "", "albumtitle")
-                        window:setTitleWidget(Group("albumtitle", {
-                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
+                        local window = Window("window", "Pièce: " .. room_name .. " / " .. name)
                         local menu = SimpleMenu("menu")
 
                         menu:addItem({
@@ -774,14 +745,7 @@ end
 
 function _ShowSlider(self, room_name, room_type, name, state, id, room_id, window, old_window, cmd)
 
-        local swindow = Window("window", "", "albumtitle")
-
-        swindow:setTitleWidget(
-                Group("albumtitle", {
-                        text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                        icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type)))
-                })
-        )
+        local swindow = Window("window", "Pièce: " .. room_name .. " / " .. name)
 
         local o = Split(state, " ", 2)
         if #o > 1 then
@@ -806,7 +770,7 @@ function _ShowSlider(self, room_name, room_type, name, state, id, room_id, windo
                         end
                 end)
 
-        local help = Textarea("help", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
+        local help = Textarea("help_text", "Déplacez le curseur pour choisir une nouvelle valeur, et appuyez sur Ok pour valider.")
 
         swindow:addWidget(help)
         swindow:addWidget(slider)
@@ -829,10 +793,7 @@ function _addIODimmerRGB(self, old_window, room_type, room_name, room_id, menu, 
                 icon = Icon("image", Surface:loadImage(icon_file)),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
-                        local window = Window("window", "", "albumtitle")
-                        window:setTitleWidget(Group("albumtitle", {
-                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
+                        local window = Window("window", "Pièce: " .. room_name .. " / " .. name)
                         local menu = SimpleMenu("menu")
 
                         menu:addItem({
@@ -900,7 +861,7 @@ function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id
         if state == "true" then
                 icon_file = icon_file .. "icon_shutter_on.png"
         else
-                icon_file = icon_file .. "icon_shutter.png"
+                icon_file = icon_file .. "icon_shutter_off.png"
         end
 
         menu:addItem({
@@ -908,10 +869,7 @@ function _addIOShutter(self, old_window, room_type, room_name, room_id, menu, id
                 icon = Icon("image", Surface:loadImage(icon_file)),
                 sound = "WINDOWSHOW",
                 callback = function(event, item)
-                        local window = Window("window", "", "albumtitle")
-                        window:setTitleWidget(Group("albumtitle", {
-                                text = Label("text", "Pièce:\n" .. room_name .. "\n" .. name),
-                                icon = Icon("icon", Surface:loadImage(_getRealPicture(room_type))) }))
+                        local window = Window("window", "Pièce: " .. room_name .. " / " .. name)
                         local menu = SimpleMenu("menu")
 
                         menu:addItem({
@@ -974,7 +932,7 @@ end
 
 function calaosMediamenu(self)
         local window = Window("window", "Calaos Media")
-        local menu = SimpleMenu("big_menu")
+        local menu = SimpleMenu("menu")
 
         self:CSendCommand("camera ?",
                 function (chunk, err)
@@ -983,7 +941,7 @@ function calaosMediamenu(self)
 
                         clearCameraPool()
 
-                        -- timer to return to home screen after a while, moslty to avoid battery comsuption
+                        -- timer to return to home screen after a while, mainly to avoid battery comsuption
                         local _returnTimer = Timer(1000 * 60, -- 1 min
                                 function ()
                                         window:hide()
@@ -1017,11 +975,7 @@ function calaosMediamenu(self)
                                                                         _returnTimer:stop()
 
                                                                         -- Show the fullscreen camera
-                                                                        local cwindow = Window("window", "Calaos Media", "albumtitle")
-
-                                                                        cwindow:setTitleWidget(Group("albumtitle", {
-                                                                                text = Label("text", "Calaos Media:\n" .. cname),
-                                                                                icon = Icon("icon", Surface:loadImage("applets/Calaos/icon_cam.png")) }))
+                                                                        local cwindow = Window("window", "Calaos Media")
 
                                                                         local srf = Surface:newRGBA(width, height)
                                                                         srf:filledRectangle(0, 0, width, height, 0x00000000)
@@ -1032,9 +986,13 @@ function calaosMediamenu(self)
                                                                         local cambg = Sprite(width, height, "applets/Calaos/cambg.png")
                                                                         cwindow:addWidget(cambg.sprite)
 
+                                                                        local camview = Sprite(width, height, "applets/Calaos/cambg.png")
+                                                                        cwindow:addWidget(camview.sprite)
+
                                                                         bg:addAnimation(
                                                                                 function()
                                                                                         Sprite_draw(cambg)
+                                                                                        Sprite_draw(camview, camview.x + 19, camview.y + 19)
                                                                                 end,
                                                                                 FRAME_RATE
                                                                         )
@@ -1078,14 +1036,19 @@ function calaosMediamenu(self)
 --                                                                                                                         srf = srf:zoom(56, 56)
 
                                                                                                                         local w,h = srf:getSize()
+
                                                                                                                         if w < h then
                                                                                                                                 srf = srf:rotozoom(0, 154 / w, 1)
                                                                                                                         else
                                                                                                                                 srf = srf:rotozoom(0, 154 / h, 1)
                                                                                                                         end
 
-                                                                                                                        -- Draw the camera image
-                                                                                                                        srf:blit(cambg.sprite:getImage(), 19, 19)
+                                                                                                                        w,h = srf:getSize()
+                                                                                                                        log:info("Calaos: camera frame size: " .. w .. " x " .. h)
+
+                                                                                                                        cwindow:removeWidget(camview.sprite)
+                                                                                                                        Sprite_setIcon(camview, Icon("image", srf), w, h)
+                                                                                                                        cwindow:addWidget(camview.sprite)
                                                                                                                 end
                                                                                                         end,
                                                                                                         'GET',
@@ -1194,96 +1157,6 @@ function startCameraPool()
                         _camCurrent = 1
                 end
         end
-end
-
--- Some skins re-definition
-function skin(self, s)
-
-        local TEXT_COLOR = { 0xE7, 0xE7, 0xE7 }
-        local TEXT_SH_COLOR = { 0x37, 0x37, 0x37 }
-
-        local SELECT_COLOR = { 0x00, 0x00, 0x00 }
-        local SELECT_SH_COLOR = { }
-
-        local fontpath = "fonts/"
-        local FONT_13px = Font:load(fontpath .. "FreeSans.ttf", 14)
-        local FONT_15px = Font:load(fontpath .. "FreeSans.ttf", 16)
-
-        local FONT_BOLD_13px = Font:load(fontpath .. "FreeSansBold.ttf", 14)
-        local FONT_BOLD_15px = Font:load(fontpath .. "FreeSansBold.ttf", 16)
-        local FONT_BOLD_18px = Font:load(fontpath .. "FreeSansBold.ttf", 20)
-        local FONT_BOLD_20px = Font:load(fontpath .. "FreeSansBold.ttf", 22)
-        local FONT_BOLD_22px = Font:load(fontpath .. "FreeSansBold.ttf", 24)
-        local FONT_BOLD_200px = Font:load(fontpath .. "FreeSansBold.ttf", 200)
-
-        s.big_menu = {}
-        s.big_menu.padding = { 4, 2, 4, 2 }
-        s.big_menu.itemHeight = 68
-        s.big_menu.fg = {0xbb, 0xbb, 0xbb }
-        s.big_menu.font = FONT_BOLD_200px
-
-        s.io_menu = {}
-        s.io_menu.padding = { 4, 2, 4, 2 }
-        s.io_menu.itemHeight = 34
-        s.io_menu.fg = {0xbb, 0xbb, 0xbb }
-        s.io_menu.font = FONT_BOLD_200px
-
-        s.big_item = {}
-        s.big_item.order = { "icon", "text" }
-        s.big_item.padding = { 9, 6, 6, 6 }
-        s.big_item.text = {}
-        s.big_item.text.w = WH_FILL
-        s.big_item.text.padding = { 6, 8, 8, 8 }
-        s.big_item.text.align = "top-left"
-        s.big_item.text.font = FONT_13px
-        s.big_item.text.lineHeight = 16
-        s.big_item.text.line = {
-                {
-                        font = FONT_BOLD_13px,
-                        height = 17
-                }
-        }
-        s.big_item.text.fg = TEXT_COLOR
-        s.big_item.text.sh = TEXT_SH_COLOR
-
-        local imgpath = "applets/DefaultSkin/images/"
-        local selectionBox =
-                Tile:loadTiles({
-                                       imgpath .. "menu_album_selection.png",
-                                       imgpath .. "menu_album_selection_tl.png",
-                                       imgpath .. "menu_album_selection_t.png",
-                                       imgpath .. "menu_album_selection_tr.png",
-                                       imgpath .. "menu_album_selection_r.png",
-                                       imgpath .. "menu_album_selection_br.png",
-                                       imgpath .. "menu_album_selection_b.png",
-                                       imgpath .. "menu_album_selection_bl.png",
-                                       imgpath .. "menu_album_selection_l.png"
-                               })
-
-        -- defines a new style that inherrits from an existing style
-        local function _uses(parent, value)
-                local style = {}
-                setmetatable(style, { __index = parent })
-
-                for k,v in pairs(value or {}) do
-                        if type(v) == "table" and type(parent[k]) == "table" then
-                                -- recursively inherrit from parent style
-                                style[k] = _uses(parent[k], v)
-                        else
-                                style[k] = v
-                        end
-                end
-
-                return style
-        end
-
-        s.selected.big_item = _uses(s.big_item, {
-                              bgImg = selectionBox,
-                              text = {
-                                      fg = SELECT_COLOR,
-                                      sh = SELECT_SH_COLOR
-                              }
-                      })
 end
 
 -- Discovering process
@@ -1556,40 +1429,40 @@ function _getRealRoomName(room)
 end
 
 function _getRealPicture(room)
-        local pict = "applets/Calaos/mini-"
+        local pict = "applets/Calaos/room_"
 
         if room == "lounge" or room == "salon" then
                 return pict .. "lounge.png"
         end
         if room == "chambre" or room == "bedroom" then
-                return pict .. "empty.png"
+                return pict .. "bedroom.png"
         end
         if room == "cuisine" or room == "kitchen" then
-                return pict .. "empty.png"
+                return pict .. "kitchen.png"
         end
         if room == "bureau" or room == "office" then
-                return pict .. "empty.png"
+                return pict .. "office.png"
         end
         if room == "sam" or room == "diningroom" then
-                return pict .. "empty.png"
+                return pict .. "diningroom.png"
         end
         if room == "cave" or room == "cellar" then
-                return pict .. "empty.png"
+                return pict .. "cellar.png"
         end
         if room == "divers" or room == "various" or room == "misc" then
-                return pict .. "empty.png"
+                return pict .. "misc.png"
         end
         if room == "exterieur" or room == "outside" then
-                return pict .. "empty.png"
+                return pict .. "outside.png"
         end
         if room == "sdb" or room == "bathroom" then
-                return pict .. "empty.png"
+                return pict .. "bathroom.png"
         end
         if room == "hall" or room == "couloir" or room == "corridor" then
-                return pict .. "empty.png"
+                return pict .. "hall.png"
         end
 
-        return pict .. "empty.png"
+        return pict .. "misc.png"
 end
 
 
